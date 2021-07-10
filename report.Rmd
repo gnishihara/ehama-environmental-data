@@ -1,5 +1,5 @@
 ---
-title: "新上五島町"
+title: "新上五島町：七目・焼崎・江袋における環境要因の解析"
 author: "Greg Nishihara"
 date: "Compiled on `r lubridate::today()`"
 output: 
@@ -27,6 +27,8 @@ knitr::opts_chunk$set(echo = FALSE,
                       out.width = "95%", fig.align = "center",
                       fig.showtext = TRUE, fig.pos = "H",
                       warning = FALSE, message = FALSE)
+options(knitr.kable.NA = '')
+
 Sys.setlocale("LC_TIME", "en_US.UTF-8") # This is to set the server time locate to en_US.UTF-8
 ```
 
@@ -77,7 +79,7 @@ pval = function(x) {
 ```
 
 ```{r}
-dall = read_rds("ehama_dataset.rds")
+dall = read_rds("~/Lab_Data/ehama_nutrient_data/ehama_dataset.rds")
 dall = dall |> 
   mutate(location = factor(location,
                            levels = c("naname", "yakisaki", "efukuro"),
@@ -201,8 +203,8 @@ bout= brm(bmodel,
   chains = 4, cores = 4, seed = 2020)
 summary(bout)
 
-write_rds(bout, "multivariate_model.rds")
-bout = read_rds("multivariate_model.rds")
+write_rds(bout, "~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
+bout = read_rds("~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
 ```
 
 ```{r, eval = F}
@@ -229,7 +231,7 @@ pp_check(bout, resp = "N")
 多変量分散分析の結果 (図 \@ref(fig:manova)) により、七目の水温と塩分は他の他地点より低く、クロロフィル、全リン、全窒素は他地点より高いことが示されました。
 
 ```{r manova, fig.cap=cap, fig.width=9, fig.height=6}
-bout = read_rds("multivariate_model.rds")
+bout = read_rds("~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
 cap = "多変量解析から求めた地点ごとの塩分、水温、クロロフィル、全リン、全窒素の平均値と95\\%信用区間。"
 pout = bout$data |> 
   tidyr::expand(nesting(location, fyear)) |> 
