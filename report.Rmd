@@ -1,0 +1,473 @@
+---
+title: "新上五島町"
+author: "Greg Nishihara"
+date: "Compiled on `r lubridate::today()`"
+output: 
+  bookdown::pdf_document2: 
+    latex_engine: xelatex
+    number_sections: false
+    toc: false
+    extra_dependencies: 
+      float:
+      colortbl:
+      xcolor:
+documentclass: bxjsarticle
+papersize: a4
+linestretch: 1.2
+fontsize: 11pt
+links-as-notes: true
+sansfont: Noto Sans
+mainfont: Noto Sans
+CJKmainfont: Noto Sans CJK JP
+---
+
+```{r setup, include=FALSE, warning=FALSE,message=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      fig.width = 4*80/25.4, fig.height = 3*80/25.4, 
+                      out.width = "95%", fig.align = "center",
+                      fig.showtext = TRUE, fig.pos = "H",
+                      warning = FALSE, message = FALSE)
+Sys.setlocale("LC_TIME", "en_US.UTF-8") # This is to set the server time locate to en_US.UTF-8
+```
+
+\rule{\linewidth}{2pt}
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(emmeans)
+library(magick)
+library(car)
+library(showtext)
+library(ggpubr)
+library(ggthemr)
+library(gnnlab)
+library(brms)
+library(rstanarm)
+library(vegan)
+library(tidybayes)
+font_add_google("Noto Sans JP", "notosansjp")
+showtext_auto()
+
+ggthemr("dust", layout = "clean")
+theme_replace(text = element_text(family = "notosansjp"))
+
+gnn_date = function() {
+  function(x) {
+    m = format(x, "%m月")
+    y = format(x, "\n%Y年")
+    m = str_replace(m, "^0", "")
+    ifelse(duplicated(y), m, paste(m,y))
+  }
+}
+
+
+pm = function(x, y) {
+  sprintf("%0.2f ± %0.2f", x, y)
+}
+
+pval = function(x) {
+  if (x < 0.0001) {
+    "P < 0.0001"
+  } else {
+    sprintf("P = %0.4f", x)
+  }
+}
+```
+
+```{r}
+dall = read_rds("ehama_dataset.rds")
+dall = dall |> 
+  mutate(location = factor(location,
+                           levels = c("naname", "yakisaki", "efukuro"),
+                           labels = c("七目", "焼崎", "江袋")))
+```
+
+## 概要
+
+本レポートは新上五島町水産課が2010年から記録している七目、焼崎、江袋における環境要因の解析結果です。
+データの詳細は **【新上五島町】採水データ【グラフ付き】.xls** を参考にしてください。
+環境要因のデータは多変量分散分析および多次元尺度法を用いて解析しました。
+七目における環境要因の特徴は焼崎と江袋と異なり、焼崎と江袋の環境要因の特徴は似ていると推測しました。
+解析結果はあくまでも暫定的であり、環境要因を毎月にモニタリングするは必要です。
+さらに、植生調査を行うことも重要です。
+
+
+## データの確認
+
+七目、焼崎、江袋における環境要因の観測は不規則に記録されています。
+水温、塩分、全リン、全窒素、クロロフィル濃度の観測頻度は場所と年で異なり、１回から６回程度は観測されています。
+水深、溶存酸素濃度、NO~2~、NO~3~、NH~4~ 、PO~4~ も観測されているが、本解析に使用していません。
+NO~2~、NO~3~、NH~4~ 、PO~4~は全窒素および全リンに含まれているから外しました。
+水深と溶存酸素濃度は場所と測定手法によってことなりため、外しました。
+
+規則的な変動は水温に見られたが、のこりの環境要因には目立ったパターンはありませんでした (図 \@ref(fig:envplot))。
+
+$$
+\text{正規化観測値} = \frac{\text{観測値} - \text{観測値の平均値}}{\text{観測値の標準偏差}}
+$$
+
+```{r envplot, fig.cap = cap, fig.width=6, fig.height=3}
+cap = "七目、焼崎、江袋における環境要因の年間変動。環境要因の値は正規化した。"
+dall2 = dall |> 
+  mutate(year = year(date),
+         month = month(date),
+         yday = yday(date)) 
+
+dall2 = dall2 |>
+  mutate(day = as.numeric(date)) |>
+  mutate(day = day -  min(day, na.rm=T))
+dall2 = dall2 |> drop_na(day)
+
+dall2 = dall2 |> mutate(fyear = factor(year)) |> 
+  mutate(yday2 = yday)
+
+dall2 |> 
+  mutate(across(temperature:chla, ~scale(.)[,1])) |> 
+  select(location, date, temperature,salinity, chla, N, P, year, month, day, yday) |> 
+  pivot_longer(cols = c(temperature, salinity, N, P, chla)) |> 
+  mutate(name = factor(name,
+                       levels = c("temperature", "salinity", "chla","N", "P"),
+                       labels = c("水温", "塩分", "クロロフィル", "全窒素", "全リン"))) |> 
+  ggplot(aes(x = date, y = value, color = location)) + 
+  geom_line() + 
+  geom_point() +
+  scale_y_continuous("正規化観測値") +
+  scale_x_date("年") +
+  facet_wrap("name") +
+  theme(legend.position = "top",
+        legend.title = element_blank())
+```
+
+## 環境要因の解析
+
+水温、塩分、クロロフィル濃度、全リン、全窒素の多変量分散分析 (Multivariate Analysis of Variance; MANOVA) は階層ベイズ法 (多変量混合モデルともよばれています; Multivariate Mixed Effects Model) で実施しました。
+説明変数は観測地点 (七目、焼崎、江袋)です。
+
+$$
+\begin{aligned}
+\mu &= \beta_i + \delta_{j} + \gamma_{ij}\\
+y &\sim N_k(\mu, \epsilon) \\
+\mu &= 
+\begin{pmatrix}
+\mu_{1} \\
+\mu_{2} \\
+\mu_{3} \\
+\mu_{4} \\
+\mu_{5} \\
+\end{pmatrix}\\
+\epsilon &= 
+\begin{pmatrix}
+\sigma^2_1 & \rho_{12}\sigma_1\sigma_2 & \rho_{13}\sigma_1\sigma_3 & \rho_{14}\sigma_1\sigma_4 & \rho_{15}\sigma_1\sigma_5 \\
+\rho_{21}\sigma_2\sigma_1 & \sigma^2_2 & \rho_{13}\sigma_2\sigma_3 & \rho_{24}\sigma_2\sigma_4 & \rho_{25}\sigma_2\sigma_5 \\
+\rho_{31}\sigma_3\sigma_1 & \rho_{32}\sigma_3\sigma_3 & \sigma^2_3 & \rho_{34}\sigma_3\sigma_4 & \rho_{35}\sigma_3\sigma_5 \\
+\rho_{41}\sigma_4\sigma_1 & \rho_{42}\sigma_4\sigma_2 & \rho_{43}\sigma_4\sigma_3 & \sigma^2_4 & \rho_{54}\sigma_5\sigma_4 \\
+\rho_{51}\sigma_5\sigma_1 & \rho_{52}\sigma_5\sigma_2 & \rho_{53}\sigma_5\sigma_3 & \rho_{54}\sigma_5\sigma_4 & \sigma^2_5  \\
+\end{pmatrix}
+\end{aligned}
+$$
+
+$\mu$ は観測値の期待値ベクトル、$\epsilon$ は分散共分散行列、
+$i$ は地点の指標、$j$ は年の指標、$k$ は観測値の指標 (1: 水温、2: 塩分、3:クロロフィル、4:全リン、5:線窒素)、
+$\delta$ は地点におけるランダム効果、
+$\gamma$ は年ごとの地点におけるランダム効果、
+$\epsilon$ は誤差項、
+$\rho$ は相関係数、$\sigma$ は標準偏差です。
+$N_k(\cdot)$ は多変量正規分布です。
+
+
+```{r, eval = F}
+# See the following URL for notes on the crossed design of fyear and location.
+# https://stats.stackexchange.com/questions/228800/crossed-vs-nested-random-effects-how-do-they-differ-and-how-are-they-specified
+ 
+dall3 = dall2 |> 
+  filter(year >2012) |> 
+  select(location,fyear, salinity, temperature, chla, P, N) |> drop_na() |> 
+  mutate(chla = log(chla)) |> 
+  mutate(across(c(temperature, chla, P, N, salinity), ~scale(.)[,1])) |> 
+  mutate(fyear = fct_drop(fyear))
+
+# The nesting is fyear --> location
+bmodel = brms::bf(mvbind(temperature, salinity, chla, P, N) ~ 0 + location + (1|fyear/location)) + set_rescor(TRUE)
+
+bout= brm(bmodel,
+  data = dall3,
+  family = gaussian,
+  backend = "cmdstanr",
+  threads = threading(4),
+  warmup = 1000,
+  iter = 1000 + 2000,
+  chains = 4, cores = 4, seed = 2020)
+summary(bout)
+
+write_rds(bout, "multivariate_model.rds")
+bout = read_rds("multivariate_model.rds")
+```
+
+```{r, eval = F}
+bayes_R2(bout)
+summary(bout)
+```
+
+```{r, eval = F}
+pp_check(bout, resp = "chla")
+pp_check(bout, resp = "salinity")
+pp_check(bout, resp = "temperature")
+pp_check(bout, resp = "P")
+pp_check(bout, resp = "N")
+```
+
+## 結果
+
+多変量分散分析は複数の観測値を同時に扱い、因子の主効果と相互作用の影響を調べるために使います。
+ここで使用した因子は観測地点 (七目、焼崎、江袋)です。
+同時に解析した観測値は塩分、水温、クロロフィル、全リン、全窒素です。
+さらに、階層ベイズ法を用いることで、誤差項は地点および年レベルまで分解できます。
+誤差項は詳細に分解することで、地点間の環境要因の特徴を制度高く表すことができると考えられます。
+
+多変量分散分析の結果 (図 \@ref(fig:manova)) により、七目の水温と塩分は他の他地点より低く、クロロフィル、全リン、全窒素は他地点より高いことが示されました。
+
+```{r manova, fig.cap=cap, fig.width=9, fig.height=6}
+bout = read_rds("multivariate_model.rds")
+cap = "多変量解析から求めた地点ごとの塩分、水温、クロロフィル、全リン、全窒素の平均値と95\\%信用区間。"
+pout = bout$data |> 
+  tidyr::expand(nesting(location, fyear)) |> 
+  add_fitted_draws(bout, allow_new_levels =T) |> 
+  ungroup() |> group_by(location, .category) |> 
+  mean_hdci(.value) 
+prescale = 
+  dall2 |> 
+  summarise(across(c(temperature, salinity, chla, N, P), list(mean = ~mean(., na.rm=T), 
+                                          sd = ~sd(., na.rm=T))))
+prescale = prescale  |> gather() |> 
+  separate(key, c(".category", "stat")) |> 
+  pivot_wider(names_from = stat, values_from = value)
+
+pout = 
+  full_join(pout, prescale) |> 
+  mutate(across(c(.value, .lower, .upper),
+                ~.x*sd + mean))
+pout |> 
+  mutate(.category = factor(.category,
+                            levels = c("salinity", "temperature", "chla", "P", "N"),
+                            labels = c("塩分", "水温~('°C')", "クロロフィル~(mg~m^{-3})", "全リン~(mg~L^{-1})", "全窒素~(mg~L^{-1})"))) |> 
+ggplot() + 
+  geom_pointrange(aes(x = location, y = .value,
+                      ymin = .lower, ymax = .upper, 
+                      color = location)) + 
+  facet_wrap(".category", scales = "free", labeller = label_parsed) +
+  labs(y = "多変量解析における結果", x = "観測値地点") +
+  theme(legend.position = "none")
+
+```
+
+さらに、多変量分散分析の事後分布から 50 サンプルを無作為に抽出しました。
+抽出した期待値のサンプルは多次元尺度 (Multi-Dimensional Scaling, MDS) 解析を行いました。
+多次元尺度法は抽出した観測値のユークリッド距離 (euclidean distance) から、2 次元の座標値を求めます。
+座標値の近い点は環境要因の特徴が似ていると考えられます。
+つまり、座標値が離れれば離れるほど、環境要因の特徴は異なります。
+
+多次元尺度法を用いてい、環境要因の特徴を年ごごとに示しました（図 \@ref(fig:mds))。
+楕円は各地点における座標値の95%信頼区間を示しています。
+焼崎と江袋の座標値に目立った違いがなく、2013年から2021年において環境要因の特徴に違いはないと考えられます。
+ところが、七目は焼崎と江袋から比較的に離れていて、その違いは毎年現れています。
+
+七目の植生は、焼崎と江袋より状態であり、特に今年 (2021) はアマモ、ヒジキ、アカモクなどの大型藻類が七目に繁茂していました。
+丁寧に生態系の調査を行い、本結果の検証は必要だと考えられますが、環境要因の特徴に違いがあると考えられます。
+
+```{r}
+Z = bout$data |> 
+  tidyr::expand(nesting(location, fyear)) |> 
+  add_fitted_draws(bout, value  = "fit", n = 50) |> 
+  ungroup()
+```
+
+
+```{r mds, fig.cap = cap, fig.width=6, fig.height=9}
+cap = "多次元尺度法における多変量分散分析の解析結果 (事後分布) 。環境要因の特性が似ている点はお互いに近い距離で分布していますが、似ていない点は遠く離れています。楕円は95\\%信頼区間です。"
+Zorig = Z |> ungroup() |> 
+  pivot_wider(names_from = .category, values_from = fit) |> 
+  # group_by(location, fyear) |> 
+  # slice_sample(n = 50) |> 
+  select(fyear, location, temperature:N) |> ungroup()
+M = Zorig |> select(-location, -fyear) |> dist()
+M  = cmdscale(M, eig=T)
+Zout = M$points |> as_tibble() |> bind_cols(Zorig)
+
+ggplot(Zout) + 
+  stat_ellipse(aes(x = V1, y = V2, 
+                   color = location,
+                   fill = location),
+               size = 1, alpha = 0.4,
+               geom = "polygon") +
+  geom_point(aes(x = V1, y = V2, color = location),alpha = 0.5) +
+  facet_wrap("fyear") +
+  coord_fixed() +
+  theme(legend.position = "top",
+        legend.title = element_blank(),
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank())
+```
+
+## 解析に使用したデータ表
+
+
+```{r}
+X = dall2 |> 
+  group_by(location, year) |> 
+  summarise(across(c(temperature, do, salinity, N, P, chla),
+                   list(mean = ~mean(., na.rm=T),
+                        sd = ~sd(., na.rm=T),
+                        min = ~min(., na.rm=T),
+                        max = ~max(., na.rm=T),
+                        N = length))) |> 
+  pivot_longer(-c(location, year)) |> 
+  separate(name, c("name", "stat")) |> 
+  pivot_wider(names_from = stat, values_from = value) 
+```
+
+```{r}
+cap = "七目、焼崎、江袋における年間水温 (°C) の記述等軽量。"
+cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
+X |> 
+  filter(str_detect(name, "temp")) |> 
+  select(-name) |> 
+  knitr::kable(format = "latex",
+                  booktabs = T,
+               digits = c(0,0,1,1,1,1),
+                  caption = cap,escape = F,
+                  col.names = cnames, linesep = "")
+```
+
+```{r}
+cap = "七目、焼崎、江袋における年間塩分の記述等軽量。"
+cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
+X |> 
+  filter(str_detect(name, "sali")) |> 
+  select(-name) |> 
+  knitr::kable(format = "latex",
+                  booktabs = T,
+               digits = c(0,0,1,1,1,1),
+                  caption = cap,escape = F,
+                  col.names = cnames, linesep = "")
+```
+
+```{r}
+cap = "七目、焼崎、江袋における年間全窒素 (mg~L\\textsuperscript{-1})  の記述等軽量。"
+cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
+X |> 
+  filter(str_detect(name, "N")) |> 
+  select(-name) |> 
+  knitr::kable(format = "latex",
+                  booktabs = T,
+               digits = c(0,0,3,3,3,3),
+                  caption = cap,escape = F,
+                  col.names = cnames, linesep = "")
+```
+
+```{r}
+cap = "七目、焼崎、江袋における年間全リン (mg~L\\textsuperscript{-1})  の記述等軽量。"
+cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
+X |> 
+  filter(str_detect(name, "P")) |> 
+  select(-name) |> 
+  knitr::kable(format = "latex",
+                  booktabs = T,
+               digits = c(0,0,3,3,3,3),
+                  caption = cap,
+               escape = F,
+                  col.names = cnames, linesep = "")
+```
+
+```{r}
+cap = "七目、焼崎、江袋における年間クロロフィル (mg~m\\textsuperscript{-3})  の記述等軽量。"
+cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
+X |> 
+  filter(str_detect(name, "chl")) |> 
+  select(-name) |> 
+  knitr::kable(format = "latex",
+                  booktabs = T,
+               digits = c(0,0,1,1,1,1),
+                  caption = cap,
+                  col.names = cnames, linesep = "")
+```
+
+```{r, eval = F}
+sout0 = stan_gamm4(temperature ~ s(yday, bs = "cc")　+ s(year, bs = "cr"),
+            knots = list(yday = c(1, 366)),
+            data = dall2,
+           cores = 4, chains = 4, seed = 2020,
+           prior = normal(0,1),
+           prior_intercept = normal(0,1),
+           prior_smooth = exponential(1),
+           adapt_delta = 0.99)
+
+sout = stan_gamm4(temperature ~ 0 +
+              s(yday, bs = "cc", by = location)　+
+              s(year, bs = "cr", by = location) +
+              location, 
+              random = ~(1|location),
+            knots = list(yday = c(1, 366)),
+            data = dall2,
+           QR = TRUE,
+           cores = 4, chains = 4, seed = 2020,
+           prior = normal(0,1),
+           prior_intercept = normal(0,1),
+           prior_smooth = exponential(1),
+           adapt_delta = 0.99)
+# loo0 = loo(sout0, save_psis = TRUE)
+# loo1 = loo(sout, save_psis = TRUE)
+kfold0 = kfold(sout0, K = 10, cores = 10)
+kfold1 = kfold(sout, K = 10, cores = 10)
+loo_compare(kfold0,kfold1)
+
+plot_nonlinear(sout) + theme(text = element_text(family = "notosansjp"))
+
+fout = expand.grid(location = levels(dall2$location),
+            yday = seq(min(dall2$yday), max(dall2$yday), by = 7),
+            year = min(dall2$year):max(dall2$year)) |> 
+  mutate(fyear = factor(year),
+         yday2 = yday) |> 
+  as_tibble()
+
+
+fout = fout |> 
+  add_predicted_draws(sout,n = 100) |>
+  group_by(location, yday, yday2, year,fyear) |> 
+  rename(yhat = matches("value|prediction")) |> 
+  mean_hdci(yhat) |> 
+  rename(lower = matches("lower"),
+         upper = matches("upper")) |> 
+  select(location, yday, year, lower, upper, fyear, yday2)
+
+fout = fout |> add_fitted_draws(sout, n = 100) |> 
+  group_by(location, yday,yday2, year, upper, lower) |> 
+  rename(yhat = matches("value|prediction")) |> 
+  summarise(yhat = mean(yhat)) |> ungroup()
+
+fout = fout |> 
+  mutate(date = ymd(str_glue("{year}-01-01"))+(yday)) 
+
+cap  = "七目では冬季の水温が焼崎と江袋より低い"
+
+ggplot(dall2) + 
+  geom_ribbon(aes(x = date, 
+                  ymin = lower,
+                  ymax = upper, fill = location),
+              alpha = 0.2, data = fout) + 
+  geom_line(aes(x = date, y = yhat, color = location),
+            data = fout) +
+  geom_point(aes(x = date, y = temperature, color = location)) +
+  scale_y_continuous("水温 (°C)",
+                     breaks = seq(0, 30, by = 5)) +
+  facet_grid(rows = vars(location)) +
+  theme(legend.position = c(0,1),
+        legend.justification = c(0,1),
+        legend.direction = "horizontal",
+        legend.title = element_blank())
+
+```
+
