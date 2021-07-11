@@ -1,16 +1,24 @@
 ---
-title: "新上五島町：七目・焼崎・江袋における環境要因の解析"
-author: "Greg Nishihara"
-date: "Compiled on `r lubridate::today()`"
+title: |
+       | 新上五島町七目・焼崎・江袋における
+       | 環境要因の解析
+       |
+author: |
+        | Greg Nishihara 
+        | 水圏植物生態学研究室
+        | 長崎大学・海洋未来イノベーション機構
+date: "`r lubridate::today() |> format('%Y年%m月%d日')`"
 output: 
   bookdown::pdf_document2: 
     latex_engine: xelatex
     number_sections: false
     toc: false
+    keep_tex: true
     extra_dependencies: 
       float:
       colortbl:
       xcolor:
+      placeins: [ "section" ]
 documentclass: bxjsarticle
 papersize: a4
 linestretch: 1.2
@@ -21,11 +29,12 @@ mainfont: Noto Sans
 CJKmainfont: Noto Sans CJK JP
 ---
 
+
 ```{r setup, include=FALSE, warning=FALSE,message=FALSE}
 knitr::opts_chunk$set(echo = FALSE, 
                       fig.width = 4*80/25.4, fig.height = 3*80/25.4, 
                       out.width = "95%", fig.align = "center",
-                      fig.showtext = TRUE, fig.pos = "H",
+                      fig.showtext = TRUE, fig.pos = "h",
                       warning = FALSE, message = FALSE)
 options(knitr.kable.NA = '')
 
@@ -49,6 +58,7 @@ library(brms)
 library(rstanarm)
 library(vegan)
 library(tidybayes)
+library(kableExtra)
 font_add_google("Noto Sans JP", "notosansjp")
 showtext_auto()
 
@@ -86,7 +96,7 @@ dall = dall |>
                            labels = c("七目", "焼崎", "江袋")))
 ```
 
-## 概要
+# 概要
 
 本レポートは新上五島町水産課が2010年から記録している七目、焼崎、江袋における環境要因の解析結果です。
 データの詳細は **【新上五島町】採水データ【グラフ付き】.xls** を参考にしてください。
@@ -95,8 +105,7 @@ dall = dall |>
 解析結果はあくまでも暫定的であり、毎月の環境要因のモニタリングが必要です。
 また、同時に植生調査を行うことも推奨します。
 
-
-## データの確認
+# データの確認
 
 七目、焼崎、江袋における環境要因の観測は不規則に記録されています。
 水温、塩分、全リン、全窒素、クロロフィル濃度の観測頻度は場所と年で異なり、１回から６回程度を観測しています。
@@ -106,12 +115,8 @@ NO~2~、NO~3~、NH~4~ 、PO~4~は全窒素および全リンに含まれてお�
 
 水温に規則的な変動が見られたが、その他の環境要因には目立ったパターンはありませんでした (図 \@ref(fig:envplot))。
 
-$$
-\text{正規化観測値} = \frac{\text{観測値} - \text{観測値の平均値}}{\text{観測値の標準偏差}}
-$$
-
 ```{r envplot, fig.cap = cap, fig.width=6, fig.height=3}
-cap = "七目、焼崎、江袋における環境要因の年間変動。環境要因の値は正規化した。"
+cap = "七目、焼崎、江袋における環境要因の年間変動。環境要因の値は正規化 ($\\text{正規化観測値} = \\frac{\\text{観測値} - \\text{観測値の平均値}}{\\text{観測値の標準偏差}}$) しました。"
 dall2 = dall |> 
   mutate(year = year(date),
          month = month(date),
@@ -142,9 +147,9 @@ dall2 |>
         legend.title = element_blank())
 ```
 
-## 環境要因の解析
+# 環境要因の解析
 
-水温、塩分、クロロフィル濃度、全リン、全窒素の多変量分散分析 (Multivariate Analysis of Variance; MANOVA) は階層ベイズ法 (多変量混合モデルともよばれています; Multivariate Mixed Effects Model) で実施しました。
+水温、塩分、クロロフィル、全リン、全窒素の多変量分散分析 (Multivariate Analysis of Variance; MANOVA) は階層ベイズ法 (多変量混合モデルともよばれています; Multivariate Mixed Effects Model) で実施しました。
 説明変数は観測地点 (七目、焼崎、江袋)です。
 
 $$
@@ -170,8 +175,8 @@ y &\sim N_k(\mu, \epsilon) \\
 \end{aligned}
 $$
 
-$\mu$ は観測値の期待値ベクトル、$\epsilon$ は分散共分散行列、
-$i$ は地点の指標、$j$ は年の指標、$k$ は観測値の指標 (1: 水温、2: 塩分、3:クロロフィル、4:全リン、5:線窒素)、
+$\mu$ は観測値（平均値）の期待値ベクトル、$\epsilon$ は分散共分散行列、
+$i$ は地点の指標、$j$ は年の指標、$k$ は観測値の指標 (1: 水温、2: 塩分、3:クロロフィル、4:全リン、5:全窒素)、
 $\delta$ は地点におけるランダム効果、
 $\gamma$ は年ごとの地点におけるランダム効果、
 $\epsilon$ は誤差項、
@@ -201,15 +206,13 @@ bout= brm(bmodel,
   warmup = 1000,
   iter = 1000 + 2000,
   chains = 4, cores = 4, seed = 2020)
-summary(bout)
-
 write_rds(bout, "~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
-bout = read_rds("~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
 ```
 
-```{r, eval = F}
-bayes_R2(bout)
-summary(bout)
+```{r readrds}
+bout = read_rds("~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
+br2 = bayes_R2(bout) |> as_tibble(rownames = "variable")
+sumout = summary(bout)
 ```
 
 ```{r, eval = F}
@@ -220,18 +223,19 @@ pp_check(bout, resp = "P")
 pp_check(bout, resp = "N")
 ```
 
-## 結果
 
-多変量分散分析は複数の観測値を同時に扱い、因子の主効果と相互作用の影響を調べるために使います。
+# 結果
+
+多変量分散分析は複数の観測値を同時に扱い、因子（説明変数）の主効果と相互作用の影響を調べるために使います。
 ここで使用した因子は観測地点 (七目、焼崎、江袋)です。
 同時に解析した観測値は塩分、水温、クロロフィル、全リン、全窒素です。
 さらに、階層ベイズ法を用いることで、誤差項は地点および年レベルまで分解できます。
 誤差項は詳細に分解することで、地点間の環境要因の特徴を制度高く表すことができると考えられます。
+焼崎の観測は 2013年から始まったので、2013年からのデータを解析に使用しました。
 
 多変量分散分析の結果 (図 \@ref(fig:manova)) により、七目の水温と塩分は他地点より低く、クロロフィル、全リン、全窒素は他地点より高いことが示されました。
 
 ```{r manova, fig.cap=cap, fig.width=9, fig.height=6}
-bout = read_rds("~/Lab_Data/ehama_nutrient_data/multivariate_model.rds")
 cap = "多変量解析から求めた地点ごとの塩分、水温、クロロフィル、全リン、全窒素の平均値と95\\%信用区間。"
 pout = bout$data |> 
   tidyr::expand(nesting(location, fyear)) |> 
@@ -263,8 +267,11 @@ ggplot() +
   theme(legend.position = "none")
 
 ```
+```{r}
+SAMPLE = 100
+```
 
-さらに、多変量分散分析の事後分布から 50 サンプルを無作為に抽出しました。
+さらに、多変量分散分析の事後分布から `r SAMPLE` サンプルを無作為に抽出しました。
 抽出した期待値のサンプルは多次元尺度 (Multi-Dimensional Scaling, MDS) 解析を行いました。
 多次元尺度法は抽出した観測値のユークリッド距離 (euclidean distance) から、2 次元の座標値を求めます。
 座標値の近い点は環境要因の特徴が似ていると考えられます。
@@ -273,7 +280,7 @@ ggplot() +
 多次元尺度法を用いて、環境要因の特徴を年ごとに示しました（図 \@ref(fig:mds))。
 楕円は各地点における座標値の95%信頼区間を示しています。
 焼崎と江袋の座標値に目立った違いがなく、2013年から2021年において環境要因の特徴が似ていると考えられます。
-ところが、七目の座標値は焼崎と江袋から比較的離れており、その違いは毎年現れています。
+ところが、七目の座標値は焼崎と江袋から比較的に離れており、その違いは毎年現れています。
 
 七目の植生は、焼崎と江袋と比較して良い状態であり、特に今年 (2021) はアマモ、ヒジキ、アカモクなどの大型藻類が繁茂していました。
 本結果の検証には、今後も丁寧に生態系の調査を行うことが必要だと考えられますが、現時点では七目と焼崎と江袋には環境要因の特徴に違いがあると考えられます。
@@ -281,13 +288,12 @@ ggplot() +
 ```{r}
 Z = bout$data |> 
   tidyr::expand(nesting(location, fyear)) |> 
-  add_fitted_draws(bout, value  = "fit", n = 50) |> 
+  add_fitted_draws(bout, value  = "fit", n = SAMPLE) |> 
   ungroup()
 ```
 
-
 ```{r mds, fig.cap = cap, fig.width=6, fig.height=9}
-cap = "多次元尺度法における多変量分散分析の解析結果 (事後分布) 。環境要因の特性が似ている点はお互いに近い距離で分布していますが、似ていない点は遠く離れています。楕円は95\\%信頼区間です。"
+cap = "多次元尺度法における多変量分散分析の解析結果 (事後分布) 。環境要因の特徴が似ている点はお互いに近い距離で分布していますが、似ていない点は遠く離れています。楕円は95\\%信頼区間です。"
 Zorig = Z |> ungroup() |> 
   pivot_wider(names_from = .category, values_from = fit) |> 
   # group_by(location, fyear) |> 
@@ -303,7 +309,9 @@ ggplot(Zout) +
                    fill = location),
                size = 1, alpha = 0.4,
                geom = "polygon") +
-  geom_point(aes(x = V1, y = V2, color = location),alpha = 0.5) +
+  geom_point(aes(x = V1, y = V2, color = location),
+             size = 1,
+             alpha = 0.5) +
   facet_wrap("fyear") +
   coord_fixed() +
   theme(legend.position = "top",
@@ -314,8 +322,110 @@ ggplot(Zout) +
         axis.line = element_blank())
 ```
 
-## 解析に使用したデータ表
+\newpage
 
+
+# 付録: A多変量分散分析結果の詳細
+
+```{r}
+br2out = br2 |> 
+  mutate(variable = factor(variable,
+                           levels = c("R2temperature", "R2salinity",
+                                      "R2chla", "R2P", "R2N"),
+                           labels = c("水温", "塩分", "クロロフィル",
+                                      "全リン", "全窒素"))) 
+z = br2out |> pull(Estimate) 
+
+```
+
+
+```{r rho, fig.cap = cap, fig.height = 3, fig.width=6}
+cap = str_glue("多変量分散分析における決定係数は 0 から 1 の値をとります。
+決定係数はモデルの観測値が説明変数 (調査地点) にどの程度説明されているのかを評価するために使います。
+説明変数の効果が大きい場合は、決定係数は 1 に近寄りますが、説明変数の効果がない場合は決定係数が 0 になります。
+全ての決定係数は 0.50 以下でした。特に、水温の決定係数はとても低いです。
+モデル全体の平均決定係数は{sprintf('%0.2f',mean(z))} でした。
+これは、観測値の季節変動を十分に考慮していないからだと考えられます。
+表\\ref{{tab:sigmatable}}に記述した標準偏差とランダム効果も参考にしてください。")
+
+  br2out |> 
+  ggplot(aes(x = reorder(variable, desc(Estimate)), 
+             y = Estimate,
+             color = variable))  +
+  geom_point() +
+  geom_text(aes(y = 0.6, label = sprintf("%0.2f", Estimate)),
+            family = "notosansjp") +
+  geom_errorbar(aes(ymin = Q2.5,
+                    ymax = Q97.5), width = 0) +
+  scale_x_discrete("環境要因") +
+  scale_y_continuous(parse(text = "'決定係数'~(R^2)"),
+                     breaks = seq(0, 0.6, by = 0.1),
+                     limits = c(0,0.6)) +
+  theme(legend.position = "none")
+```
+
+```{r, fig.cap = cap, fig.height=3, fig.width=6}
+cap = "多変量分散分析における環境要因ペアの相関係数は -1 から 1 の値をとります。
+点は相関係数の期待値と線は95\\%信用区間を示しています。
+水温は塩分、全リン、全窒素と負の相関がありましたが、クロロフィルと全リン・全窒素は正の相関がありました。全窒素と全窒素も正の相関がありました。水温とクロロフィルに相関関係がないと考えられますが、塩分と全リン、全窒素クロロフィルは若干正の相関がありました。"
+
+sumout$rescor_pars |> 
+  as_tibble(rownames = "pair") |> 
+  mutate(pair = str_replace(pair, "rescor", "ρ")) |> 
+  mutate(pair = str_replace(pair, "temperature","水温")) |>
+  mutate(pair = str_replace(pair, "salinity","塩分")) |> 
+  mutate(pair = str_replace(pair, "P","全リン")) |> 
+  mutate(pair = str_replace(pair, "N","全窒素")) |> 
+  mutate(pair = str_replace(pair, "chla","クロロフィル")) |> 
+  ggplot() + 
+  geom_point(aes(y = reorder(pair, desc(Estimate)), 
+                 x = Estimate)) +
+  geom_errorbar(aes(y = pair, 
+                    xmin = `l-95% CI`,
+                    xmax = `u-95% CI`), width = 0) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey80") +
+  scale_x_continuous("環境要因間の相関係数", limits = c(-0.75, 0.75),
+                     breaks = seq(-0.75, 0.75, by = 0.25)) +
+  scale_y_discrete("環境要因ペア")
+```
+
+
+```{r sigmatable}
+cap = "多変量分散分析で求めた各環境要因の標準偏差 ($\\sigma$)、地点におけるランダム効果 ($\\delta$)、年ごとの地点におけるランダム効果 ($\\gamma$) の期待値と95\\%信用区間です。
+モデルの説明変数 (調査地点) ができない情報は $\\sigma$、$\\delta$、$\\gamma$に割り振られます。"
+cnames = c("環境要因", "モデル変数", "期待値", "95\\%信用区間")
+a1 = sumout$spec_pars |> as_tibble(rownames = "variable")
+a2 = sumout$random$fyear |> as_tibble(rownames = "variable")
+a3 = sumout$random$`fyear:location` |> as_tibble(rownames = "variable")
+
+bind_rows(a1,a2,a3) |> 
+  select(variable, Estimate, contains("CI")) |> 
+  mutate(V = str_extract(variable, "temperature|salinity|chla|P|N"),
+         .before = variable) |> 
+  mutate(V = factor(V,
+                           levels = c("temperature", "salinity",
+                                      "chla", "P", "N"),
+                           labels = c("水温", "塩分", "クロロフィル",
+                                      "全リン", "全窒素"))) |> 
+  mutate(coef = rep(c("$\\sigma$", "$\\delta$", "$\\gamma$"), 
+                    each = 5), .after = V) |>
+  mutate(int = sprintf("%2.3f 〜 %2.3f", `l-95% CI`, `u-95% CI`)) |> 
+  select(V, coef, Estimate, int) |> 
+  arrange(desc(coef), desc(Estimate)) |> 
+  kbl(format = "latex",
+                  booktabs = T,
+               digits = c(0,0,3,0),
+                  caption = cap,
+      escape = F,
+                  col.names = cnames, 
+      linesep = c("", "", "", "", "\\addlinespace")) |> 
+  kable_styling(latex_options = 
+                  c("condensed", "hold_position"),
+                font_size = 9)
+```
+
+
+# 付録B: 解析に使用したデータ表
 
 ```{r}
 X = dall2 |> 
@@ -332,20 +442,23 @@ X = dall2 |>
 ```
 
 ```{r}
-cap = "七目、焼崎、江袋における年間水温 (°C) の記述等軽量。"
+cap = "七目、焼崎、江袋における年間水温 (°C) の記述統計量。"
 cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
 X |> 
   filter(str_detect(name, "temp")) |> 
   select(-name) |> 
-  knitr::kable(format = "latex",
-                  booktabs = T,
-               digits = c(0,0,1,1,1,1),
-                  caption = cap,escape = F,
-                  col.names = cnames, linesep = "")
+  kbl(format = "latex",
+      booktabs = T,
+      digits = c(0,0,1,1,1,1),
+      caption = cap,escape = F,
+      col.names = cnames, linesep = "") |> 
+  kable_styling(latex_options = 
+                  c("condensed", "hold_position"),
+                font_size = 9)
 ```
 
 ```{r}
-cap = "七目、焼崎、江袋における年間塩分の記述等軽量。"
+cap = "七目、焼崎、江袋における年間塩分の記述統計量。"
 cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
 X |> 
   filter(str_detect(name, "sali")) |> 
@@ -354,11 +467,14 @@ X |>
                   booktabs = T,
                digits = c(0,0,1,1,1,1),
                   caption = cap,escape = F,
-                  col.names = cnames, linesep = "")
+                  col.names = cnames, linesep = "") |> 
+  kable_styling(latex_options = 
+                  c("condensed", "hold_position"),
+                font_size = 9)
 ```
 
 ```{r}
-cap = "七目、焼崎、江袋における年間全窒素 (mg~L\\textsuperscript{-1})  の記述等軽量。"
+cap = "七目、焼崎、江袋における年間全窒素 (mg~L\\textsuperscript{-1})  の記述統計量。"
 cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
 X |> 
   filter(str_detect(name, "N")) |> 
@@ -367,11 +483,14 @@ X |>
                   booktabs = T,
                digits = c(0,0,3,3,3,3),
                   caption = cap,escape = F,
-                  col.names = cnames, linesep = "")
+                  col.names = cnames, linesep = "") |> 
+  kable_styling(latex_options = 
+                  c("condensed", "hold_position"),
+                font_size = 9)
 ```
 
 ```{r}
-cap = "七目、焼崎、江袋における年間全リン (mg~L\\textsuperscript{-1})  の記述等軽量。"
+cap = "七目、焼崎、江袋における年間全リン (mg~L\\textsuperscript{-1})  の記述統計量。"
 cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
 X |> 
   filter(str_detect(name, "P")) |> 
@@ -381,11 +500,14 @@ X |>
                digits = c(0,0,3,3,3,3),
                   caption = cap,
                escape = F,
-                  col.names = cnames, linesep = "")
+                  col.names = cnames, linesep = "") |> 
+  kable_styling(latex_options = 
+                  c("condensed", "hold_position"),
+                font_size = 9)
 ```
 
 ```{r}
-cap = "七目、焼崎、江袋における年間クロロフィル (mg~m\\textsuperscript{-3})  の記述等軽量。"
+cap = "七目、焼崎、江袋における年間クロロフィル (mg~m\\textsuperscript{-3})  の記述統計量。"
 cnames = c("地点", "年", "平均値", "標準偏差", "最小値", "最大値", "標本数")
 X |> 
   filter(str_detect(name, "chl")) |> 
@@ -394,7 +516,10 @@ X |>
                   booktabs = T,
                digits = c(0,0,1,1,1,1),
                   caption = cap,
-                  col.names = cnames, linesep = "")
+                  col.names = cnames, linesep = "") |> 
+  kable_styling(latex_options = 
+                  c("condensed", "hold_position"),
+                font_size = 9)
 ```
 
 ```{r, eval = F}
@@ -472,4 +597,3 @@ ggplot(dall2) +
         legend.title = element_blank())
 
 ```
-
